@@ -1,0 +1,131 @@
+"""
+debug_scraper.py — Run this FIRST if a scraper returns 0 results.
+It shows exactly what HTML the site returns and which selectors match.
+
+Usage:
+  python debug_scraper.py internshala
+  python debug_scraper.py timesjobs
+  python debug_scraper.py indeed
+  python debug_scraper.py naukri
+  python debug_scraper.py ncs
+"""
+import sys, requests, time, random
+from bs4 import BeautifulSoup
+
+HDR = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-IN,en-US;q=0.9,en;q=0.8",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+}
+
+SITES = {
+    "internshala": ("https://internshala.com/jobs/python-developer-jobs",
+                    "https://internshala.com"),
+    "timesjobs":   ("https://www.timesjobs.com/candidate/job-search.html?searchType=personalizedSearch&from=submit&txtKeywords=python+developer&txtLocation=",
+                    "https://www.timesjobs.com"),
+    "indeed":      ("https://in.indeed.com/jobs?q=python+developer&l=India&sort=date",
+                    "https://in.indeed.com"),
+    "naukri":      ("https://www.naukri.com/python-developer-jobs",
+                    "https://www.naukri.com"),
+    "shine":       ("https://www.shine.com/job-search/python-developer-jobs/",
+                    "https://www.shine.com"),
+    "foundit":     ("https://www.foundit.in/srp/results?query=python+developer&locationId=1&sort=1",
+                    "https://www.foundit.in"),
+    "ncs":         ("https://www.ncs.gov.in/jobseeker/pages/jobsearch/jobsearch.aspx?keyword=python+developer",
+                    "https://www.ncs.gov.in"),
+}
+
+SELECTORS_TO_TRY = [
+    ("div", "individual_internship"),
+    ("article", "jobTuple"),
+    ("div", "srp-jobtuple-wrapper"),
+    ("li", "clearfix job-bx wht-shd-bx"),
+    ("div", "job_seen_beacon"),
+    ("div", "jobsearch-ResultsList"),
+    ("div", "jobCard"),
+    ("article", None),
+    ("h2", "jobTitle"),
+    ("a", "title"),
+    ("span", "salary"),
+    ("span", "stipend"),
+    ("span", "companyName"),
+    ("div", "companyLocation"),
+    ("span", "locWdth"),
+]
+
+def debug(site_name):
+    if site_name not in SITES:
+        print(f"Unknown site. Choose from: {', '.join(SITES.keys())}")
+        return
+
+    url, base = SITES[site_name]
+    print(f"\n{'='*60}")
+    print(f"  DEBUGGING: {site_name.upper()}")
+    print(f"  URL: {url}")
+    print(f"{'='*60}\n")
+
+    s = requests.Session()
+    try:
+        s.get(base, headers=HDR, timeout=10)
+        print("✓ Base page visited (cookies set)")
+    except Exception as e:
+        print(f"✗ Base page error: {e}")
+    time.sleep(random.uniform(1.5, 2.5))
+
+    try:
+        r = s.get(url, headers=HDR, timeout=15)
+        print(f"HTTP Status : {r.status_code}")
+        print(f"Response len: {len(r.text)} bytes")
+        print(f"Content-Type: {r.headers.get('Content-Type','')}")
+    except Exception as e:
+        print(f"✗ Request failed: {e}")
+        return
+
+    if r.status_code != 200:
+        print(f"\n⚠ NOT OK — site returned {r.status_code}")
+        print("First 300 chars:", r.text[:300])
+        return
+
+    soup = BeautifulSoup(r.text, "lxml")
+    print(f"\n── Selector scan ──────────────────────────────────")
+    for tag, cls in SELECTORS_TO_TRY:
+        if cls:
+            found = soup.find_all(tag, class_=cls)
+        else:
+            found = soup.find_all(tag)
+        count = len(found)
+        if count > 0:
+            sample = found[0].get_text(strip=True)[:80]
+            print(f"  ✓  <{tag} class='{cls}'>  → {count} found  | sample: {sample!r}")
+        else:
+            print(f"  ✗  <{tag} class='{cls}'>  → 0")
+
+    print(f"\n── Page title ─────────────────────────────────────")
+    print(" ", soup.title.get_text() if soup.title else "No title tag")
+
+    print(f"\n── First 800 chars of visible text ────────────────")
+    print(soup.get_text(separator=" ")[:800])
+
+    print(f"\n── First job card HTML (first matching container) ──")
+    for tag, cls in SELECTORS_TO_TRY:
+        if cls:
+            card = soup.find(tag, class_=cls)
+        else:
+            card = soup.find(tag)
+        if card:
+            print(f"  Found via <{tag} class='{cls}'>:")
+            print(str(card)[:1500])
+            break
+
+    # save full HTML for manual inspection
+    fname = f"debug_{site_name}.html"
+    with open(fname, "w", encoding="utf-8") as f:
+        f.write(r.text)
+    print(f"\n✓ Full HTML saved to {fname} — open in browser to inspect")
+
+
+if __name__ == "__main__":
+    site = sys.argv[1].lower() if len(sys.argv) > 1 else "internshala"
+    debug(site)
