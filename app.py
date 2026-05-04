@@ -35,7 +35,7 @@ def api_sources():
 def api_scrape():
     """Runs the scraper in a background thread so the UI doesn't hang."""
     def _run():
-        from scraper import run_scraper
+        from scraper_run import run_scraper
         run_scraper()
     t = threading.Thread(target=_run, daemon=True)
     t.start()
